@@ -177,6 +177,8 @@ int main(int argc, char* argv[]) {
 	/* 結果の保存に用いる変数 */
 	struct result_data *results, *current_result;
 	uint32_t *result_putterns, *result_all_putterns;
+	uint32_t result_count = 0;
+	uint32_t *previous_all_putterns = NULL;
 
 	/* 入力を読み取る */
 	if ((argc != 4 && argc != 5) || !is_valid_pnum(argv[1]) ||
@@ -250,6 +252,32 @@ int main(int argc, char* argv[]) {
 		return 1;
 	}
 
+	/* 比較用のメモリを確保する */
+	cmp_size = required_dwords;
+	if (cmp_size > UINT32_MAX / 2) {
+		fputs("size too big!\n", stderr);
+		free(calculate_buffer);
+		free(results);
+		free(result_putterns);
+		free(result_all_putterns);
+		return 1;
+	}
+	cmp_size2 = cmp_size * 2;
+	cmp_buffer = malloc(
+		multiply_size(
+			multiply_size(sizeof(uint32_t), required_dwords), 5));
+	if (cmp_buffer == NULL) {
+		perror("failed to allocate compare buffer");
+		free(calculate_buffer);
+		free(results);
+		free(result_putterns);
+		free(result_all_putterns);
+		return 1;
+	}
+	cmp_buffer_a = cmp_buffer;
+	cmp_buffer_b = cmp_buffer + (size_t)required_dwords * 2;
+	cmp_buffer_temp = cmp_buffer + (size_t)required_dwords * 4;
+
 	/* 計算を行う */
 	#pragma omp parallel
 	{
@@ -293,7 +321,7 @@ int main(int argc, char* argv[]) {
 				/* パターン数を記録する */
 				#pragma omp single
 				{
-					current_result = &results[i * (size_t)dice_max_num + j];
+					current_result = &results[result_count++];
 					current_result->dice_num = j + 1;
 					current_result->dice_max_output = i + 1;
 					current_result->puttern_count =
@@ -313,9 +341,21 @@ int main(int argc, char* argv[]) {
 						}
 					} else {
 						multiply(current_result->all_puttern_count,
-							results[i * (size_t)dice_max_num + j - 1].all_puttern_count,
-							i + 1, required_dwords);
+							previous_all_putterns, i + 1, required_dwords);
 					}
+					previous_all_putterns = current_result->all_puttern_count;
+					/* バッファの挿入ソートを行う */
+					for (k = result_count - 1; k > 0; k--) {
+						if (result_data_cmp(&results[k - 1], &results[k]) > 0) {
+							struct result_data tmp = results[k - 1];
+							results[k - 1] = results[k];
+							results[k] = tmp;
+						} else {
+							break;
+						}
+					}
+					/* 表示範囲からあふれた無駄なデータを削る */
+					if (result_count > output_num) result_count = output_num;
 					/* バッファを入れ替える */
 					tmp = calculate_src;
 					calculate_src = calculate_dst;
@@ -330,38 +370,11 @@ int main(int argc, char* argv[]) {
 			}
 		}
 	}
-
 	free(calculate_buffer);
-
-	/* 比較用のメモリを確保する */
-	cmp_size = required_dwords;
-	if (cmp_size > UINT32_MAX / 2) {
-		fputs("size too big!\n", stderr);
-		free(results);
-		free(result_putterns);
-		free(result_all_putterns);
-		return 1;
-	}
-	cmp_size2 = cmp_size * 2;
-	cmp_buffer = malloc(
-		multiply_size(
-			multiply_size(sizeof(uint32_t), required_dwords), 5));
-	if (cmp_buffer == NULL) {
-		perror("failed to allocate compare buffer");
-		free(results);
-		free(result_putterns);
-		free(result_all_putterns);
-		return 1;
-	}
-	cmp_buffer_a = cmp_buffer;
-	cmp_buffer_b = cmp_buffer + (size_t)required_dwords * 2;
-	cmp_buffer_temp = cmp_buffer + (size_t)required_dwords * 4;
-	/* ソートを行う */
-	qsort(results, dice_max_sum, sizeof(struct result_data), result_data_cmp);
 	free(cmp_buffer);
 
 	/* 上位を出力する */
-	for (i = 0; i < dice_max_sum && i < output_num; i++) {
+	for (i = 0; i < dice_max_sum && i < result_count; i++) {
 		printf("%"PRIu32"d%"PRIu32" -> %g (",
 			results[i].dice_num, results[i].dice_max_output,
 			num_to_double(results[i].puttern_count, required_dwords) /
