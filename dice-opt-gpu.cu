@@ -336,10 +336,10 @@ int main(int argc, char* argv[]) {
 		cudaDeviceSynchronize();
 
 		/* DP */
+		run_dp<<<dice_max_sum / THREADS_ALIGN, THREADS_ALIGN>>>
+			(calculate_src, calculate_dst, required_dwords, i);
 		/* サイコロの数繰り返す */
 		for (j = 0; j < dice_max_num; j++) {
-			run_dp<<<dice_max_sum / THREADS_ALIGN, THREADS_ALIGN>>>
-				(calculate_src, calculate_dst, required_dwords, i);
 			/* パターン数を記録する */
 			current_result = &results[result_count++];
 			current_result->dice_num = j + 1;
@@ -365,6 +365,15 @@ int main(int argc, char* argv[]) {
 				&calculate_dst[target_value * (size_t)required_dwords],
 				sizeof(*current_result->puttern_count) * required_dwords,
 				cudaMemcpyDeviceToHost);
+			if (j + 1 < dice_max_num) {
+				/* バッファを入れ替える */
+				tmp = calculate_src;
+				calculate_src = calculate_dst;
+				calculate_dst = tmp;
+				/* 次の計算を行う */
+				run_dp<<<dice_max_sum / THREADS_ALIGN, THREADS_ALIGN>>>
+					(calculate_src, calculate_dst, required_dwords, i);
+			}
 			/* バッファの挿入ソートを行う */
 			for (k = result_count - 1; k > 0; k--) {
 				if (result_data_cmp(&results[k - 1], &results[k]) > 0) {
@@ -377,10 +386,6 @@ int main(int argc, char* argv[]) {
 			}
 			/* 表示範囲からあふれた無駄なデータを削る */
 			if (result_count > output_num) result_count = output_num;
-			/* バッファを入れ替える */
-			tmp = calculate_src;
-			calculate_src = calculate_dst;
-			calculate_dst = tmp;
 		}
 	}
 	cudaFree(calculate_buffer);
