@@ -1,11 +1,14 @@
 BINDIR=bin
 CC=gcc
 CFLAGS=-Wall -Wextra -pedantic -O2
+GPUC=nvcc
+GPUCFLAGS=
 TARGETS= \
 	$(BINDIR)/dice-opt \
 	$(BINDIR)/dice-opt-omp \
 	$(BINDIR)/dice-opt-2 \
-	$(BINDIR)/dice-opt-2-omp
+	$(BINDIR)/dice-opt-2-omp \
+	$(BINDIR)/dice-opt-gpu
 
 .PHONY: all
 all: $(TARGETS)
@@ -21,6 +24,9 @@ $(BINDIR)/dice-opt-2: dice-opt-2.c
 
 $(BINDIR)/dice-opt-2-omp: dice-opt-2.c
 	$(CC) $(CFLAGS) -fopenmp -o $@ $^
+
+$(BINDIR)/dice-opt-gpu: dice-opt-gpu.cu
+	$(GPUC) $(GPUCFLAGS) -o $@ $^
 
 .PHONY: clean
 .PHONY: clean
