@@ -8,6 +8,8 @@ TARGETS= \
 	$(BINDIR)/dice-opt-omp \
 	$(BINDIR)/dice-opt-2 \
 	$(BINDIR)/dice-opt-2-omp \
+	$(BINDIR)/dice-opt-2-prank \
+	$(BINDIR)/dice-opt-2-prank-omp \
 	$(BINDIR)/dice-opt-gpu
 
 .PHONY: all
@@ -25,6 +27,13 @@ $(BINDIR)/dice-opt-2: dice-opt-2.c
 $(BINDIR)/dice-opt-2-omp: dice-opt-2.c
 	$(CC) $(CFLAGS) -fopenmp -o $@ $^
 
+$(BINDIR)/dice-opt-2-prank: dice-opt-2-prank.c
+	$(CC) $(CFLAGS) -Wno-unknown-pragmas -o $@ $^
+
+$(BINDIR)/dice-opt-2-prank0omp: dice-opt-2-prank.c
+	$(CC) $(CFLAGS) -fopenmp -o $@ $^
+
+$(BINDIR)/dice-opt-gpu: dice-opt-gpu.cu
 $(BINDIR)/dice-opt-gpu: dice-opt-gpu.cu
 	$(GPUC) $(GPUCFLAGS) -o $@ $^
 

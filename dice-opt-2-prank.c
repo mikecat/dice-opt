@@ -95,6 +95,7 @@ struct result_data {
 
 uint32_t cmp_size, cmp_size2;
 uint32_t *cmp_buffer, *cmp_buffer_a, *cmp_buffer_b, *cmp_buffer_temp;
+#pragma omp threadprivate(cmp_buffer, cmp_buffer_a, cmp_buffer_b, cmp_buffer_temp)
 int result_data_cmp(const void* x, const void* y) {
 	const struct result_data *a = (const struct result_data*)x;
 	const struct result_data *b = (const struct result_data*)y;
@@ -177,6 +178,7 @@ int main(int argc, char* argv[]) {
 	/* 結果の保存に用いる変数 */
 	struct result_data *results, *current_result;
 	uint32_t *result_putterns, *result_all_putterns;
+	char *is_bigger;
 	uint32_t result_count = 0;
 	uint32_t *previous_all_putterns = NULL;
 
@@ -253,6 +255,15 @@ int main(int argc, char* argv[]) {
 	}
 
 	/* 比較用のメモリを確保する */
+	is_bigger = malloc(output_num);
+	if (is_bigger == NULL) {
+		perror("failed to allocate compare result buffer");
+		free(calculate_buffer);
+		free(results);
+		free(result_putterns);
+		free(result_all_putterns);
+		return 1;
+	}
 	cmp_size = required_dwords;
 	if (cmp_size > UINT32_MAX / 2) {
 		fputs("size too big!\n", stderr);
@@ -263,26 +274,30 @@ int main(int argc, char* argv[]) {
 		return 1;
 	}
 	cmp_size2 = cmp_size * 2;
-	cmp_buffer = malloc(
-		multiply_size(
-			multiply_size(sizeof(uint32_t), required_dwords), 5));
-	if (cmp_buffer == NULL) {
-		perror("failed to allocate compare buffer");
-		free(calculate_buffer);
-		free(results);
-		free(result_putterns);
-		free(result_all_putterns);
-		return 1;
-	}
-	cmp_buffer_a = cmp_buffer;
-	cmp_buffer_b = cmp_buffer + (size_t)required_dwords * 2;
-	cmp_buffer_temp = cmp_buffer + (size_t)required_dwords * 4;
-
-	/* 計算を行う */
 	#pragma omp parallel
 	{
+		/* それぞれのスレッドで比較用のメモリを確保する */
+		cmp_buffer = malloc(
+			multiply_size(
+				multiply_size(sizeof(uint32_t), required_dwords), 5));
+		if (cmp_buffer == NULL) {
+			#pragma omp single
+			{
+				perror("failed to allocate compare buffer");
+				free(calculate_buffer);
+				free(results);
+				free(result_putterns);
+				free(result_all_putterns);
+			}
+			exit(1);
+		}
+		cmp_buffer_a = cmp_buffer;
+		cmp_buffer_b = cmp_buffer + (size_t)required_dwords * 2;
+		cmp_buffer_temp = cmp_buffer + (size_t)required_dwords * 4;
+
+		/* 計算を行う */
 		/* サイコロの目の最大値を全探索する */
-			/* ここでi++すると複数回になって死ぬ */
+		/* ここでi++すると複数回になって死ぬ */
 		for (i = 0; i < dice_max_output; ) {
 			/* 初期化 */
 			#pragma omp for private(k)
@@ -344,16 +359,24 @@ int main(int argc, char* argv[]) {
 							previous_all_putterns, i + 1, required_dwords);
 					}
 					previous_all_putterns = current_result->all_puttern_count;
-					/* バッファの挿入ソートを行う */
+				}
+				/* バッファの挿入ソートを行う */
+				#pragma omp for
+				for (k = 0; k < result_count - 1; k++) {
+					is_bigger[k] = (result_data_cmp(&results[k], &results[result_count - 1]) > 0);
+				}
+				#pragma omp single
+				{
+					struct result_data sort_tmp = results[result_count - 1];
 					for (k = result_count - 1; k > 0; k--) {
-						if (result_data_cmp(&results[k - 1], &results[k]) > 0) {
-							struct result_data tmp = results[k - 1];
-							results[k - 1] = results[k];
-							results[k] = tmp;
+						if (is_bigger[k - 1]) {
+							results[k] = results[k - 1];
 						} else {
+							results[k] = sort_tmp;
 							break;
 						}
 					}
+					if (k <= 0) results[0] = sort_tmp;
 					/* 表示範囲からあふれた無駄なデータを削る */
 					if (result_count > output_num) result_count = output_num;
 					/* バッファを入れ替える */
@@ -369,9 +392,9 @@ int main(int argc, char* argv[]) {
 				i++;
 			}
 		}
+		free(cmp_buffer);
 	}
 	free(calculate_buffer);
-	free(cmp_buffer);
 
 	/* 上位を出力する */
 	for (i = 0; i < dice_max_sum && i < result_count; i++) {
