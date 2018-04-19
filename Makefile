@@ -29,6 +29,5 @@ $(BINDIR)/dice-opt-gpu: dice-opt-gpu.cu
 	$(GPUC) $(GPUCFLAGS) -o $@ $^
 
 .PHONY: clean
-.PHONY: clean
 clean:
 	rm $(TARGETS)
