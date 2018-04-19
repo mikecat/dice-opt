@@ -340,7 +340,6 @@ int main(int argc, char* argv[]) {
 		for (j = 0; j < dice_max_num; j++) {
 			run_dp<<<dice_max_sum / THREADS_ALIGN, THREADS_ALIGN>>>
 				(calculate_src, calculate_dst, required_dwords, i);
-			cudaDeviceSynchronize();
 			/* パターン数を記録する */
 			current_result = &results[result_count++];
 			current_result->dice_num = j + 1;
@@ -351,10 +350,6 @@ int main(int argc, char* argv[]) {
 			current_result->all_puttern_count =
 				&result_all_putterns
 					[(i * (size_t)dice_max_num + j) * required_dwords];
-			cudaMemcpy(current_result->puttern_count,
-				&calculate_dst[target_value * (size_t)required_dwords],
-				sizeof(*current_result->puttern_count) * required_dwords,
-				cudaMemcpyDeviceToHost);
 			if (j == 0) {
 				current_result->all_puttern_count[0] = i + 1;
 				for (k = 1; k < required_dwords; k++) {
@@ -365,6 +360,11 @@ int main(int argc, char* argv[]) {
 					previous_all_putterns, i + 1, required_dwords);
 			}
 			previous_all_putterns = current_result->all_puttern_count;
+			cudaDeviceSynchronize();
+			cudaMemcpy(current_result->puttern_count,
+				&calculate_dst[target_value * (size_t)required_dwords],
+				sizeof(*current_result->puttern_count) * required_dwords,
+				cudaMemcpyDeviceToHost);
 			/* バッファの挿入ソートを行う */
 			for (k = result_count - 1; k > 0; k--) {
 				if (result_data_cmp(&results[k - 1], &results[k]) > 0) {
